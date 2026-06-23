@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb+srv://admin:PESUniversity2026@cluster0.s4vslcl.mongodb.net/?appName=Cluster0
+      - PYTHONPATH=/app
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile   # <-- DOUBLE CHECK THIS MATCHES YOUR FILENAME
+    ports:
+      - "8501:8501"
+    environment:
+      - MONGO_URI=mongodb+srv://admin:PESUniversity2026@cluster0.s4vslcl.mongodb.net/?appName=Cluster0
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: always
