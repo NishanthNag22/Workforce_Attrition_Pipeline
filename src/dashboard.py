@@ -5,7 +5,6 @@ import requests
 import plotly.express as px
 from pymongo import MongoClient
 
-# Configure full widescreen layout rules
 st.set_page_config(page_title="Workforce Retention Analytics Engine", layout="wide")
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -24,21 +23,29 @@ def fetch_cloud_telemetry_history() -> pd.DataFrame:
             
         flattened_list = []
         for doc in cursor:
+            # Safely grab the nested data blocks
+            emp_inputs = doc.get("employee_inputs", {})
+            pred_outputs = doc.get("prediction_outputs", {})
+            
             record = {
-                "Department": doc.get("employee_inputs", {}).get("Department"),
-                "Base_Salary": doc.get("employee_inputs", {}).get("Base_Salary"),
-                "Years_At_Company": doc.get("employee_inputs", {}).get("Years_At_Company"),
-                "Satisfaction_Score": doc.get("employee_inputs", {}).get("Satisfaction_Score"),
-                "Overtime_Hours": doc.get("employee_inputs", {}).get("Avg_Monthly_Overtime_Hours"),
-                "Comp_Ratio": doc.get("employee_inputs", {}).get("Comp_Ratio"),
-                "Risk_Classification": doc.get("prediction_outputs", {}).get("risk_classification"),
-                "Probability_Str": doc.get("prediction_outputs", {}).get("attrition_probability")
+                "Department": emp_inputs.get("Department", "Engineering"),
+                "Base_Salary": float(emp_inputs.get("Base_Salary", 65000.0)),
+                "Years_At_Company": int(emp_inputs.get("Years_At_Company", 3)),
+                "Satisfaction_Score": int(emp_inputs.get("Satisfaction_Score", 4)),
+                
+                # Assigns the backend data to "Overtime_Hours" so the scatter plot can read it cleanly
+                "Overtime_Hours": float(emp_inputs.get("Avg_Monthly_Overtime_Hours", 20.5)),
+                
+                "Comp_Ratio": float(emp_inputs.get("Comp_Ratio", 0.9)),
+                "Risk_Classification": pred_outputs.get("risk_classification", "LOW RISK"),
+                "Probability_Str": pred_outputs.get("attrition_probability")
             }
             if record["Probability_Str"]:
                 record["Attrition_Probability_%"] = float(record["Probability_Str"].replace("%", ""))
             flattened_list.append(record)
         return pd.DataFrame(flattened_list)
     except Exception as e:
+        st.error(f"Error fetching cloud telemetry: {e}")
         return pd.DataFrame()
 
 st.title("Workforce Attrition Analytics Portal")
@@ -92,9 +99,18 @@ with tab_analytics:
         fig_bar = px.histogram(df_history, x="Department", color="Risk_Classification", barmode="group", title="Risk Split by Department", color_discrete_sequence=px.colors.qualitative.Pastel)
         st.plotly_chart(fig_bar, use_container_width=True)
         
-        fig_scatter = px.scatter(df_history, x="Overtime_Hours", y="Attrition_Probability_%", color="Risk_Classification", size="Base_Salary", hover_data=["Years_At_Company"], title="Overtime vs Risk")
+        # Explicit scale bounds to prevent outlier data warping axes scale limits
+        fig_scatter = px.scatter(
+            df_history, 
+            x="Overtime_Hours", 
+            y="Attrition_Probability_%", 
+            color="Risk_Classification", 
+            range_x=[0, 85],
+            range_y=[0, 105],
+            hover_data=["Years_At_Company", "Base_Salary"], 
+            title="Overtime vs Risk"
+        )
         st.plotly_chart(fig_scatter, use_container_width=True)
         
         with st.expander("View Complete Database Records Table"):
-            # Adjusted explicitly to use container formatting options inside Linux environments
             st.dataframe(df_history, use_container_width=True)

@@ -24,24 +24,66 @@ FEATURES = [
 ]
 
 def make_data(n_samples=300, seed=42):
-    """Generates synthetic employee data to train the model."""
+    """Generates synthetic employee data with realistic, correlated feature logic."""
     np.random.seed(seed)
     depts = ["Engineering", "Sales", "HR", "Marketing", "Finance"]
     
+    # 1. Base Feature Generation
+    departments = np.random.choice(depts, size=n_samples)
+    years_at_company = np.random.randint(0, 15, size=n_samples)
+    satisfaction_scores = np.random.randint(1, 6, size=n_samples)
+    overtime_hours = np.random.uniform(0.0, 80.0, size=n_samples)
+    
+    # 2. Establish Department-Based Salary Baselines (Realistic Market Ranges)
+    # Engineering/Finance typically make more than HR/Marketing
+    dept_market_averages = {
+        "Engineering": 95000.0,
+        "Finance": 88000.0,
+        "Sales": 75000.0,
+        "Marketing": 70000.0,
+        "HR": 65000.0
+    }
+    
+    base_salaries = []
+    comp_ratios = []
+    
+    for dept in departments:
+        market_avg = dept_market_averages[dept]
+        # Generate salary centered around that department's market average
+        salary = np.random.normal(loc=market_avg, scale=15000.0)
+        salary = np.clip(salary, 30000.0, 150000.0) # Keep within bounds
+        
+        base_salaries.append(round(salary, 2))
+        comp_ratios.append(round(salary / market_avg, 2))
+        
     df = pd.DataFrame({
-        "Department": np.random.choice(depts, size=n_samples),
-        "Base_Salary": np.random.randint(30000, 140000, size=n_samples).astype(float),
-        "Years_At_Company": np.random.randint(0, 15, size=n_samples),
-        "Satisfaction_Score": np.random.randint(1, 6, size=n_samples),
-        "Avg_Monthly_Overtime_Hours": np.random.uniform(0.0, 80.0, size=n_samples),
-        "Comp_Ratio": np.random.uniform(0.6, 1.4, size=n_samples)
+        "Department": departments,
+        "Base_Salary": base_salaries,
+        "Years_At_Company": years_at_company,
+        "Satisfaction_Score": satisfaction_scores,
+        "Avg_Monthly_Overtime_Hours": overtime_hours,
+        "Comp_Ratio": comp_ratios
     })
     
-    # Simple equation to create a realistic target logic for who leaves
-    risk_score = ((df["Avg_Monthly_Overtime_Hours"] / 35.0) * 1.5 + (1.2 - df["Comp_Ratio"]) * 2.0 - (df["Satisfaction_Score"] * 0.8))
-    df["Left_Company"] = (1 / (1 + np.exp(-risk_score)) > 0.5).astype(int)
+    # 3. INTERACTION-DRIVEN RISK SCORING (The Core Fix)
+    # - High overtime is offset if satisfaction is high or compensation is excellent.
+    # - Low satisfaction hurts more if the salary is also below market average (Comp_Ratio < 1.0).
+    
+    overtime_penalty = df["Avg_Monthly_Overtime_Hours"] / 35.0
+    compensation_buffer = (df["Comp_Ratio"] - 1.0) * 3.0  # Positive buffer reduces risk
+    satisfaction_multiplier = df["Satisfaction_Score"] / 5.0
+    
+    # Combine them into a complex interaction score
+    risk_score = (overtime_penalty * 2.0) - compensation_buffer - (satisfaction_multiplier * 3.5)
+    
+    # Add a bit of natural variance/noise so it isn't a perfect mathematical split
+    noise = np.random.normal(0, 0.5, n_samples)
+    final_score = risk_score + noise
+    
+    # Map to binary class via standard Sigmoid activation
+    df["Left_Company"] = (1 / (1 + np.exp(-final_score)) > 0.5).astype(int)
     return df
-
+    
 def prepare_and_scale(df, is_train=True):
     """Handles dummy encoding and continuous data scaling."""
     # Convert text categories into binary columns
